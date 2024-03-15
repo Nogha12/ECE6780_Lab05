@@ -145,15 +145,37 @@ int main(void)
   USART3->BRR |= clkSpeed / targetBaud; // set baud rate clock divisor
 
   /* USER CODE END 2 */
+
+  /* Infinite loop */
+  /* USER CODE BEGIN WHILE */
+  
   I2C2->CR1 |= (0x1 << 0); // enable I2C 2
   USART3->CR1 |= (0x1 << 0); // enable USART 3
   
   GPIOB->ODR |= (0x1 << 14); // Set pin B14 high
   GPIOC->ODR |= (0x1 << 0); // Set pin C0 high
   
-  txString("Hello, World!\n");
-  /* Infinite loop */
-  /* USER CODE BEGIN WHILE */
+  // Set up I2C communication with gyroscope
+  I2C2->CR2 &= ~(0x7F << 1);
+  I2C2->CR2 |= (0x69 << 1); // set slave address to 0x69
+  I2C2->CR2 &= ~(0xFF << 16);
+  I2C2->CR2 |= (0x01 << 16); // set number of bytes to 1
+  I2C2->CR2 &= ~(0x1 << 10); // set transfer direction to write
+  I2C2->CR2 &= ~(0x1 << 25); // software end mode
+  
+  I2C2->CR2 |= (0x1 << 13); // start generation
+  
+  while ((I2C2->ISR & (0x1 << 1)) == 0)
+  {
+    HAL_Delay(1);
+    if ((I2C2->ISR & (0x1 << 4)))
+    {
+      txString("Error: slave did not respond.\n\r");
+      break;
+    }
+  }
+  txString("TXIS was set or slave did not respond.\n\r");
+  
   while (1)
   {
     /* USER CODE END WHILE */
