@@ -51,6 +51,8 @@ void SystemClock_Config(void);
 void txCharacter(char data);
 void txString(char* data);
 char rxCharacter(void);
+void writeByteI2C(char address, char data);
+int readDataI2C(char address, int bytesToRead);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -67,7 +69,8 @@ int main(void)
   /* USER CODE BEGIN 1 */
   int clkSpeed;
   int targetBaud = 115200;
-  int activePin;
+  
+  int returnValue;
   
   /* USER CODE END 1 */
 
@@ -94,53 +97,53 @@ int main(void)
   /* USER CODE BEGIN 2 */
   
   // Configure GPIO B pins 11 and 13 for I2C Data and Clock
-  GPIOB->MODER &= ~((0x3 << 11*2) | (0x3 << 13*2));
-  GPIOB->MODER |= (0x2 << 11*2) | (0x2 << 13*2); // alternate mode
-  GPIOB->OTYPER |= (0x1 << 11) | (0x1 << 13); // open-drain
-  GPIOB->OSPEEDR &= ~((0x3 << 11*2) | (0x3 << 13*2)); // low-speed
-  GPIOB->PUPDR &= ~((0x3 << 11*2) | (0x3 << 13*2)); // no pull-up/pull-down
-  GPIOB->AFR[1] &= ~((0xF << ((11 - 8)*4)) | (0xF << ((13 - 8)*4)));
-  GPIOB->AFR[1] |= (0x1 << ((11 - 8)*4)) | (0x5 << ((13 - 8)*4)); // pin 11 to AF1, pin 13 to AF5
+  GPIOB->MODER &= ~(GPIO_MODER_MODER11_Msk | GPIO_MODER_MODER13_Msk);
+  GPIOB->MODER |= GPIO_MODER_MODER11_1 | GPIO_MODER_MODER13_1; // alternate mode
+  GPIOB->OTYPER |= GPIO_OTYPER_OT_11 | GPIO_OTYPER_OT_13; // open-drain
+  GPIOB->OSPEEDR &= ~(GPIO_OSPEEDR_OSPEEDR11 | GPIO_OSPEEDR_OSPEEDR13); // low-speed
+  GPIOB->PUPDR &= ~(GPIO_PUPDR_PUPDR11 | GPIO_PUPDR_PUPDR13); // no pull-up/pull-down
+  GPIOB->AFR[1] &= ~(GPIO_AFRH_AFSEL11_Msk | GPIO_AFRH_AFSEL13_Msk);
+  GPIOB->AFR[1] |= (0x1 << GPIO_AFRH_AFSEL11_Pos) | (0x5 << GPIO_AFRH_AFSEL13_Pos); // pin 11 to AF1, pin 13 to AF5
   
   // Configure GPIO B pin 14 
-  GPIOB->MODER &= ~(0x3 << 14*2);
-  GPIOB->MODER |= (0x1 << 14*2); // output mode
-  GPIOB->OTYPER &= ~(0x1 << 14); // push-pull
-  GPIOB->OSPEEDR &= ~(0x3 << 14*2); // low-speed
-  GPIOB->PUPDR &= ~(0x3 << 14*2); // no pull-up/pull-down
+  GPIOB->MODER &= ~(GPIO_MODER_MODER14_Msk);
+  GPIOB->MODER |= (GPIO_MODER_MODER14_0); // output mode
+  GPIOB->OTYPER &= ~(GPIO_OTYPER_OT_14); // push-pull
+  GPIOB->OSPEEDR &= ~(GPIO_OSPEEDR_OSPEEDR14); // low-speed
+  GPIOB->PUPDR &= ~(GPIO_PUPDR_PUPDR14); // no pull-up/pull-down
   
   // Configure GPIO C pin 0
-  GPIOC->MODER &= ~(0x3 << 0*2);
-  GPIOC->MODER |= (0x1 << 0*2); // output mode
-  GPIOC->OTYPER &= ~(0x1 << 0); // push-pull
-  GPIOC->OSPEEDR &= ~(0x3 << 0*2); // low-speed
-  GPIOC->PUPDR &= ~(0x3 << 0*2); // no pull-up/pull-down
+  GPIOC->MODER &= ~(GPIO_MODER_MODER0_Msk);
+  GPIOC->MODER |= (GPIO_MODER_MODER0_0); // output mode
+  GPIOC->OTYPER &= ~(GPIO_OTYPER_OT_0); // push-pull
+  GPIOC->OSPEEDR &= ~(GPIO_OSPEEDR_OSPEEDR0); // low-speed
+  GPIOC->PUPDR &= ~(GPIO_PUPDR_PUPDR0); // no pull-up/pull-down
   
   // Configure GPIO C pins 10 and 11 to connect to USART 3
-  GPIOC->MODER &= ~((0x3 << 10*2) | (0x3 << 11*2));
-  GPIOC->MODER |= (0x2 << 10*2) | (0x2 << 11*2); // alternate mode
-  GPIOC->OTYPER &= ~((0x1 << 10) | (0x1 << 11)); // push-pull
-  GPIOC->OSPEEDR &= ~((0x3 << 10*2) | (0x3 << 11*2)); // low-speed
-  GPIOC->PUPDR &= ~((0x3 << 10*2) | (0x3 << 11*2)); // no pull-up/pull-down
-  GPIOC->AFR[1] &= ~((0xF << ((10 - 8)*4)) | (0xF << ((11 - 8)*4)));
-  GPIOC->AFR[1] |= (0x1 << ((10 - 8)*4)) | (0x1 << ((11 - 8)*4)); // alternate function 1
+  GPIOC->MODER &= ~(GPIO_MODER_MODER10_Msk | GPIO_MODER_MODER11_Msk);
+  GPIOC->MODER |= GPIO_MODER_MODER10_1 | GPIO_MODER_MODER11_1; // alternate mode
+  GPIOC->OTYPER &= ~(GPIO_OTYPER_OT_10 | GPIO_OTYPER_OT_11); // push-pull
+  GPIOC->OSPEEDR &= ~(GPIO_OSPEEDR_OSPEEDR10 | GPIO_OSPEEDR_OSPEEDR11); // low-speed
+  GPIOC->PUPDR &= ~(GPIO_PUPDR_PUPDR10 | GPIO_PUPDR_PUPDR11); // no pull-up/pull-down
+  GPIOC->AFR[1] &= ~(GPIO_AFRH_AFSEL10_Msk | GPIO_AFRH_AFSEL11_Msk);
+  GPIOC->AFR[1] |= (0x1 << GPIO_AFRH_AFSEL10_Pos) | (0x1 << GPIO_AFRH_AFSEL11_Pos); // alternate function 1
   
   // Configure I2C 2
-  I2C2->TIMINGR &= ~(0xF << 28);
-  I2C2->TIMINGR |= (0x1 << 28); // set timing prescaler to 1
-  I2C2->TIMINGR &= ~(0xF << 20);
-  I2C2->TIMINGR |= (0x4 << 20); // set data setup time to 4
-  I2C2->TIMINGR &= ~(0xF << 16);
-  I2C2->TIMINGR |= (0x2 << 16); // set data hold time to 2
-  I2C2->TIMINGR &= ~(0xFF << 8);
-  I2C2->TIMINGR |= (0x0F << 8); // set SCL high period to 15
-  I2C2->TIMINGR &= ~(0xFF << 0);
-  I2C2->TIMINGR |= (0x13 << 0); // set SCL low period to 19
+  I2C2->TIMINGR &= ~(I2C_TIMINGR_SCLL_Msk);
+  I2C2->TIMINGR |= (0x13 << I2C_TIMINGR_SCLL_Pos); // set SCL low period to 19
+  I2C2->TIMINGR &= ~(I2C_TIMINGR_SCLH_Msk);
+  I2C2->TIMINGR |= (0x0F << I2C_TIMINGR_SCLH_Pos); // set SCL high period to 15
+  I2C2->TIMINGR &= ~(I2C_TIMINGR_SDADEL_Msk);
+  I2C2->TIMINGR |= (0x2 << I2C_TIMINGR_SDADEL_Pos); // set data hold time to 2
+  I2C2->TIMINGR &= ~(I2C_TIMINGR_SCLDEL_Msk);
+  I2C2->TIMINGR |= (0x4 << I2C_TIMINGR_SCLDEL_Pos); // set data setup time to 4
+  I2C2->TIMINGR &= ~(I2C_TIMINGR_PRESC_Msk);
+  I2C2->TIMINGR |= (0x1 << I2C_TIMINGR_PRESC_Pos); // set timing prescaler to 1
   
   // Configure USART 3
   clkSpeed = HAL_RCC_GetHCLKFreq();
-  USART3->CR1 |= (0x1 << 2) | (0x1 << 3); // enable TX and RX
-  USART3->CR1 |= (0x1 << 5); // enable interrupts from receive register not empty
+  USART3->CR1 |= USART_CR1_RE | USART_CR1_TE; // enable TX and RX
+  USART3->CR1 |= USART_CR1_RXNEIE; // enable interrupts from receive register not empty
   USART3->BRR &= 0x0;
   USART3->BRR |= clkSpeed / targetBaud; // set baud rate clock divisor
 
@@ -149,37 +152,29 @@ int main(void)
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   
-  I2C2->CR1 |= (0x1 << 0); // enable I2C 2
-  USART3->CR1 |= (0x1 << 0); // enable USART 3
+  I2C2->CR1 |= I2C_CR1_PE; // enable I2C 2
+  USART3->CR1 |= USART_CR1_UE; // enable USART 3
   
-  GPIOB->ODR |= (0x1 << 14); // Set pin B14 high
-  GPIOC->ODR |= (0x1 << 0); // Set pin C0 high
+  GPIOB->ODR |= GPIO_ODR_14; // Set pin B14 high
+  GPIOC->ODR |= GPIO_ODR_0; // Set pin C0 high
   
-  // Set up I2C communication with gyroscope
-  I2C2->CR2 &= ~(0x7F << 1);
-  I2C2->CR2 |= (0x69 << 1); // set slave address to 0x69
-  I2C2->CR2 &= ~(0xFF << 16);
-  I2C2->CR2 |= (0x01 << 16); // set number of bytes to 1
-  I2C2->CR2 &= ~(0x1 << 10); // set transfer direction to write
-  I2C2->CR2 &= ~(0x1 << 25); // software end mode
-  
-  I2C2->CR2 |= (0x1 << 13); // start generation
-  
-  while ((I2C2->ISR & (0x1 << 1)) == 0)
+  writeByteI2C(0x69, 0x0F);
+  returnValue = readDataI2C(0x69, 1);
+  if (returnValue == 0xD3)
   {
-    HAL_Delay(1);
-    if ((I2C2->ISR & (0x1 << 4)))
-    {
-      txString("Error: slave did not respond.\n\r");
-      break;
-    }
+    txString("WHO_AM_I is a match!\n\r");
   }
-  txString("TXIS was set or slave did not respond.\n\r");
+  else
+  {
+    txString("Error: WHO_AM_I does not match.\n\r");
+    Error_Handler();
+  }
+  I2C2->CR2 |= I2C_CR2_STOP; // stop generation
   
   while (1)
   {
     /* USER CODE END WHILE */
-
+    HAL_Delay(500);
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
@@ -250,6 +245,75 @@ char rxCharacter(void)
 {
   while ((USART3->ISR & (0x1 << 5)) == 0x0);
   return USART3->RDR;
+}
+
+void writeByteI2C(char address, char data)
+{
+  I2C2->CR2 &= ~(I2C_CR2_SADD_Msk);
+  I2C2->CR2 |= (address << (I2C_CR2_SADD_Pos + 1)); // set slave address (7-bit)
+  I2C2->CR2 &= ~(I2C_CR2_NBYTES_Msk);
+  I2C2->CR2 |= (0x01 << I2C_CR2_NBYTES_Pos); // set number of bytes to 1
+  I2C2->CR2 &= ~(I2C_CR2_RD_WRN); // set transfer direction to write
+  I2C2->CR2 &= ~(I2C_CR2_AUTOEND); // software end mode
+  
+  I2C2->CR2 |= I2C_CR2_START; // start generation
+  
+  // Wait for TXIS or NACKF to be set and respond accordingly
+  while ((I2C2->ISR & (I2C_ISR_TXIS | I2C_ISR_NACKF)) == 0)
+  {
+    HAL_Delay(1);
+  }
+  if (I2C2->ISR & I2C_ISR_NACKF)
+  {
+    txString("Error: slave did not respond.\n\r");
+    Error_Handler();
+    return;
+  }
+  
+  txString("Slave successfully responded.\n\r");
+  I2C2->TXDR = data; // load data to write
+  while ((I2C2->ISR & I2C_ISR_TC) == 0); // wait for transfer complete
+  return;
+}
+
+int readDataI2C(char address, int bytesToRead)
+{ 
+  int data = 0;
+  
+  if (bytesToRead > sizeof(int))
+  {
+    txString("Warning: Too many bytes to read.\n\r");
+    return -1;
+  }
+  
+  I2C2->CR2 &= ~(I2C_CR2_SADD_Msk);
+  I2C2->CR2 |= (address << (I2C_CR2_SADD_Pos + 1)); // set slave address (7-bit)
+  I2C2->CR2 &= ~(I2C_CR2_NBYTES_Msk);
+  I2C2->CR2 |= (bytesToRead << I2C_CR2_NBYTES_Pos); // set number of bytes
+  I2C2->CR2 |= I2C_CR2_RD_WRN; // set transfer direction to read
+  I2C2->CR2 &= ~(I2C_CR2_AUTOEND); // software end mode
+  
+  I2C2->CR2 |= I2C_CR2_START; // start generation
+  
+  for (int i = 0; i < bytesToRead; i++)
+  {
+    // Wait for TXIS or NACKF to be set and respond accordingly
+    while ((I2C2->ISR & (I2C_ISR_RXNE | I2C_ISR_NACKF)) == 0)
+    {
+      HAL_Delay(1);
+    }
+    if (I2C2->ISR & I2C_ISR_NACKF)
+    {
+      txString("Error: slave did not respond.\n\r");
+      Error_Handler();
+      return -1;
+    }
+    txString("Slave successfully read.\n\r");
+    while ((I2C2->ISR & I2C_ISR_TC) == 0); // wait for transfer copmlete
+    data |= I2C2->RXDR << i*8;
+  }
+  
+  return data;
 }
 /* USER CODE END 4 */
 
