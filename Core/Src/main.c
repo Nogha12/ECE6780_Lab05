@@ -51,7 +51,8 @@ void SystemClock_Config(void);
 void txCharacter(char data);
 void txString(char* data);
 char rxCharacter(void);
-void writeByteI2C(char address, char data);
+void writeByteI2C(char address, char subaddr);
+void writeTwoBytesI2C(char address, char subaddr, char data);
 int readDataI2C(char address, int bytesToRead);
 /* USER CODE END PFP */
 
@@ -67,10 +68,14 @@ int readDataI2C(char address, int bytesToRead);
 int main(void)
 {
   /* USER CODE BEGIN 1 */
+  const char gyroAddr = 0x69;
+  const char gyroWAI = 0xD3;
   int clkSpeed;
   int targetBaud = 115200;
   
   int returnValue;
+  int xValue;
+  int yValue;
   
   /* USER CODE END 1 */
 
@@ -140,6 +145,13 @@ int main(void)
   I2C2->TIMINGR &= ~(I2C_TIMINGR_PRESC_Msk);
   I2C2->TIMINGR |= (0x1 << I2C_TIMINGR_PRESC_Pos); // set timing prescaler to 1
   
+  // Configure GPIO C pins 6, 7, 8, and 9 (LED pins)
+  GPIOC->MODER &= ~(GPIO_MODER_MODER6_Msk | GPIO_MODER_MODER7_Msk | GPIO_MODER_MODER8_Msk | GPIO_MODER_MODER9_Msk);
+  GPIOC->MODER |= GPIO_MODER_MODER6_0 | GPIO_MODER_MODER7_0 | GPIO_MODER_MODER8_0 | GPIO_MODER_MODER9_0; // output mode
+  GPIOC->OTYPER &= ~(GPIO_OTYPER_OT_6 | GPIO_OTYPER_OT_7 | GPIO_OTYPER_OT_8 | GPIO_OTYPER_OT_9); // push-pull
+  GPIOC->OSPEEDR &= ~(GPIO_OSPEEDR_OSPEEDR6 | GPIO_OSPEEDR_OSPEEDR7 | GPIO_OSPEEDR_OSPEEDR8 | GPIO_OSPEEDR_OSPEEDR9); // low-speed
+  GPIOC->PUPDR &= ~(GPIO_PUPDR_PUPDR6 | GPIO_PUPDR_PUPDR7 | GPIO_PUPDR_PUPDR8 | GPIO_PUPDR_PUPDR9); // no pull-up/pull-down
+  
   // Configure USART 3
   clkSpeed = HAL_RCC_GetHCLKFreq();
   USART3->CR1 |= USART_CR1_RE | USART_CR1_TE; // enable TX and RX
@@ -158,9 +170,9 @@ int main(void)
   GPIOB->ODR |= GPIO_ODR_14; // Set pin B14 high
   GPIOC->ODR |= GPIO_ODR_0; // Set pin C0 high
   
-  writeByteI2C(0x69, 0x0F);
-  returnValue = readDataI2C(0x69, 1);
-  if (returnValue == 0xD3)
+  writeByteI2C(gyroAddr, 0x0F); // Write WHO_AM_I address
+  returnValue = readDataI2C(gyroAddr, 1); // Read 1 byte from the gyroscope
+  if (returnValue == gyroWAI) // Verify that the gyroscope matches the known WHO_AM_I
   {
     txString("WHO_AM_I is a match!\n\r");
   }
@@ -170,12 +182,58 @@ int main(void)
     Error_Handler();
   }
   I2C2->CR2 |= I2C_CR2_STOP; // stop generation
+  while (I2C2->CR2 & I2C_CR2_STOP); // wait for stop to finish
+  
+  //txString("Writing to CTRL_REG1...");
+  writeTwoBytesI2C(gyroAddr, 0x20, 0x0B); // Write CTRL)REG1: X and Y enabled, Z disabled, normal/sleep mode
+  I2C2->CR2 |= I2C_CR2_STOP; // stop generation
+  while (I2C2->CR2 & I2C_CR2_STOP); // wait for stop to finish
+  
+  xValue = 0;
+  yValue = 0;
+ 
   
   while (1)
   {
     /* USER CODE END WHILE */
-    HAL_Delay(500);
+    
     /* USER CODE BEGIN 3 */
+    
+    // read X value
+    writeByteI2C(gyroAddr, 0xA8); // Write OUT_X_L address
+    xValue = readDataI2C(gyroAddr, 2); // Read 2 bytes from the gyroscope
+    I2C2->CR2 |= I2C_CR2_STOP; // stop generation
+    while (I2C2->CR2 & I2C_CR2_STOP); // wait for stop to finish
+    
+    // read Y value
+    writeByteI2C(gyroAddr, 0xAA); // Write OUT_X_L address
+    yValue = readDataI2C(gyroAddr, 2); // Read 2 bytes from the gyroscope
+    I2C2->CR2 |= I2C_CR2_STOP; // stop generation
+    while (I2C2->CR2 & I2C_CR2_STOP); // wait for stop to finish
+    
+    if ((int16_t)xValue > 4000) // x positive
+    {
+      GPIOC->ODR |= GPIO_ODR_8; // Turn on pin C8 (orange LED)
+      GPIOC->ODR &= ~(GPIO_ODR_9); // Turn off pin C9 (green LED)
+    }
+    else if ((int16_t)xValue < -4000) // x negative
+    {
+      GPIOC->ODR |= GPIO_ODR_9; // Turn on pin C9 (green LED)
+      GPIOC->ODR &= ~(GPIO_ODR_8); // Turn off pin C8 (orange LED)
+    }
+    
+    if ((int16_t)yValue > 4000) // y positive
+    {
+      GPIOC->ODR |= GPIO_ODR_7; // Turn on pin C7 (red LED)
+      GPIOC->ODR &= ~(GPIO_ODR_6); // Turn off pin C6 (blue LED)
+    }
+    else if ((int16_t)yValue < -4000) // y negative
+    {
+      GPIOC->ODR |= GPIO_ODR_6; // Turn on pin C6 (blue LED)
+      GPIOC->ODR &= ~(GPIO_ODR_7); // Turn off pin C7 (red LED)
+    }
+    
+    HAL_Delay(100);
   }
   /* USER CODE END 3 */
 }
@@ -247,7 +305,10 @@ char rxCharacter(void)
   return USART3->RDR;
 }
 
-void writeByteI2C(char address, char data)
+/**
+  * @brief Sends a byte via I2C 2 and leaves it in the RESTART state
+  */
+void writeByteI2C(char address, char subaddr)
 {
   I2C2->CR2 &= ~(I2C_CR2_SADD_Msk);
   I2C2->CR2 |= (address << (I2C_CR2_SADD_Pos + 1)); // set slave address (7-bit)
@@ -270,12 +331,63 @@ void writeByteI2C(char address, char data)
     return;
   }
   
-  txString("Slave successfully responded.\n\r");
-  I2C2->TXDR = data; // load data to write
+  //txString("Slave successfully responded.\n\r");
+  I2C2->TXDR = subaddr; // load data to write
   while ((I2C2->ISR & I2C_ISR_TC) == 0); // wait for transfer complete
   return;
 }
 
+/**
+  * @brief Sends 2 bytes via I2C 2 and leaves it in the RESTART state
+  */
+void writeTwoBytesI2C(char address, char subaddr, char data)
+{
+  I2C2->CR2 &= ~(I2C_CR2_SADD_Msk);
+  I2C2->CR2 |= (address << (I2C_CR2_SADD_Pos + 1)); // set slave address (7-bit)
+  I2C2->CR2 &= ~(I2C_CR2_NBYTES_Msk);
+  I2C2->CR2 |= (0x02 << I2C_CR2_NBYTES_Pos); // set number of bytes to 1
+  I2C2->CR2 &= ~(I2C_CR2_RD_WRN); // set transfer direction to write
+  I2C2->CR2 &= ~(I2C_CR2_AUTOEND); // software end mode
+  
+  I2C2->CR2 |= I2C_CR2_START; // start generation
+  
+  // Wait for TXIS or NACKF to be set and respond accordingly
+  while ((I2C2->ISR & (I2C_ISR_TXIS | I2C_ISR_NACKF)) == 0)
+  {
+    HAL_Delay(1);
+  }
+  if (I2C2->ISR & I2C_ISR_NACKF)
+  {
+    txString("Error: slave did not respond.\n\r");
+    Error_Handler();
+    return;
+  }
+  
+  //txString("Slave successfully responded.\n\r");
+  I2C2->TXDR = subaddr; // load data to write
+  
+  // Wait for TXIS or NACKF to be set and respond accordingly
+  while ((I2C2->ISR & (I2C_ISR_TXIS | I2C_ISR_NACKF)) == 0)
+  {
+    HAL_Delay(1);
+  }
+  if (I2C2->ISR & I2C_ISR_NACKF)
+  {
+    txString("Error: slave did not respond.\n\r");
+    Error_Handler();
+    return;
+  }
+  
+  //txString("Slave successfully responded.\n\r");
+  I2C2->TXDR = data; // load data to write
+  
+  while ((I2C2->ISR & I2C_ISR_TC) == 0); // wait for transfer complete
+  return;
+}
+
+/**
+  * @brief Receives a number of bytes via I2C 2 and leaves it in the RESTART state
+  */
 int readDataI2C(char address, int bytesToRead)
 { 
   int data = 0;
@@ -308,10 +420,10 @@ int readDataI2C(char address, int bytesToRead)
       Error_Handler();
       return -1;
     }
-    txString("Slave successfully read.\n\r");
-    while ((I2C2->ISR & I2C_ISR_TC) == 0); // wait for transfer copmlete
+    //txString("Slave successfully read.\n\r");
     data |= I2C2->RXDR << i*8;
   }
+  while ((I2C2->ISR & I2C_ISR_TC) == 0); // wait for transfer copmlete
   
   return data;
 }
